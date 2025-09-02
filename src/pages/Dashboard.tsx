@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
+import { chatService, Chat, Message } from '@/services/chatService';
 import { 
   Sparkles, 
   Plus, 
@@ -14,22 +15,12 @@ import {
   User, 
   LogOut,
   MessageCircle,
-  Bot
+  Bot,
+  Menu,
+  X,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
-
-interface Chat {
-  id: string;
-  title: string;
-  messages: Message[];
-  createdAt: string;
-}
-
-interface Message {
-  id: string;
-  content: string;
-  isUser: boolean;
-  timestamp: string;
-}
 
 const Dashboard = () => {
   const { user, logout } = useAuth();
@@ -38,118 +29,199 @@ const Dashboard = () => {
   const [activeChat, setActiveChat] = useState<string | null>(null);
   const [newMessage, setNewMessage] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   useEffect(() => {
-    // Load chats from localStorage
-    const savedChats = localStorage.getItem(`blogify_chats_${user?.id}`);
-    if (savedChats) {
-      const parsedChats = JSON.parse(savedChats);
-      setChats(parsedChats);
-      if (parsedChats.length > 0) {
-        setActiveChat(parsedChats[0].id);
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+      if (window.innerWidth < 768) {
+        setSidebarCollapsed(true);
       }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    if (user?.id) {
+      loadChats();
     }
   }, [user?.id]);
 
-  const saveChats = (updatedChats: Chat[]) => {
-    localStorage.setItem(`blogify_chats_${user?.id}`, JSON.stringify(updatedChats));
-    setChats(updatedChats);
-  };
-
-  const createNewChat = () => {
-    const newChat: Chat = {
-      id: Date.now().toString(),
-      title: 'New Chat',
-      messages: [],
-      createdAt: new Date().toISOString()
-    };
-    
-    const updatedChats = [newChat, ...chats];
-    saveChats(updatedChats);
-    setActiveChat(newChat.id);
-    
-    toast({
-      title: "New chat created",
-      description: "Ready to generate amazing content!",
-    });
-  };
-
-  const deleteChat = (chatId: string) => {
-    const updatedChats = chats.filter(chat => chat.id !== chatId);
-    saveChats(updatedChats);
-    
-    if (activeChat === chatId) {
-      setActiveChat(updatedChats.length > 0 ? updatedChats[0].id : null);
+  const loadChats = async () => {
+    try {
+      setIsLoading(true);
+      const userChats = await chatService.getChats();
+      setChats(userChats);
+      if (userChats.length > 0) {
+        setActiveChat(userChats[0].id);
+      }
+    } catch (error) {
+      console.error('Failed to load chats:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load chats. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
     }
-    
-    toast({
-      title: "Chat deleted",
-      description: "The chat has been removed from your history.",
-    });
+  };
+
+  const createNewChat = async () => {
+    try {
+      const newChat = await chatService.createChat({
+        title: 'New Chat',
+        user_id: user!.id
+      });
+      
+      setChats(prev => [newChat, ...prev]);
+      setActiveChat(newChat.id);
+      
+      toast({
+        title: "New chat created",
+        description: "Ready to generate amazing content!",
+      });
+    } catch (error) {
+      console.error('Failed to create chat:', error);
+      toast({
+        title: "Error",
+        description: "Failed to create new chat. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const deleteChat = async (chatId: string) => {
+    try {
+      await chatService.deleteChat(chatId);
+      setChats(prev => prev.filter(chat => chat.id !== chatId));
+      
+      if (activeChat === chatId) {
+        const remainingChats = chats.filter(chat => chat.id !== chatId);
+        setActiveChat(remainingChats.length > 0 ? remainingChats[0].id : null);
+      }
+      
+      toast({
+        title: "Chat deleted",
+        description: "The chat has been removed from your history.",
+      });
+    } catch (error) {
+      console.error('Failed to delete chat:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete chat. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   const sendMessage = async () => {
-    if (!newMessage.trim() || !activeChat) return;
+    if (!newMessage.trim() || !activeChat || !user) return;
 
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      content: newMessage,
-      isUser: true,
-      timestamp: new Date().toISOString()
-    };
-
-    // Add user message
-    const updatedChats = chats.map(chat => {
-      if (chat.id === activeChat) {
-        const updatedMessages = [...chat.messages, userMessage];
-        const title = chat.messages.length === 0 ? newMessage.slice(0, 50) + '...' : chat.title;
-        return { ...chat, messages: updatedMessages, title };
-      }
-      return chat;
-    });
-
-    saveChats(updatedChats);
+    const userMessageContent = newMessage;
     setNewMessage('');
     setIsGenerating(true);
 
-    // Simulate AI response
-    setTimeout(() => {
-      const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: `I'd be happy to help you create amazing blog content! Based on your message "${userMessage.content}", here are some suggestions:\n\n• Consider focusing on your target audience's pain points\n• Use engaging headlines that spark curiosity\n• Include actionable insights and examples\n• Optimize for SEO with relevant keywords\n\nWould you like me to help you generate a specific blog post on this topic?`,
-        isUser: false,
-        timestamp: new Date().toISOString()
-      };
-
-      const finalChats = chats.map(chat => {
-        if (chat.id === activeChat) {
-          return { ...chat, messages: [...chat.messages, userMessage, aiMessage] };
-        }
-        return chat;
+    try {
+      // Create user message
+      const userMessage = await chatService.createMessage({
+        content: userMessageContent,
+        is_user: true,
+        chat_id: activeChat
       });
 
-      saveChats(finalChats);
+      // Update chat title if it's the first message
+      const currentChat = chats.find(chat => chat.id === activeChat);
+      if (currentChat && currentChat.messages.length === 0) {
+        const newTitle = userMessageContent.slice(0, 50) + (userMessageContent.length > 50 ? '...' : '');
+        await chatService.updateChat(activeChat, newTitle);
+      }
+
+      // Simulate AI response
+      setTimeout(async () => {
+        try {
+          const aiResponse = `I'd be happy to help you create amazing blog content! Based on your message "${userMessageContent}", here are some suggestions:\n\n• Consider focusing on your target audience's pain points\n• Use engaging headlines that spark curiosity\n• Include actionable insights and examples\n• Optimize for SEO with relevant keywords\n\nWould you like me to help you generate a specific blog post on this topic?`;
+
+          await chatService.createMessage({
+            content: aiResponse,
+            is_user: false,
+            chat_id: activeChat
+          });
+
+          // Reload chats to get updated data
+          await loadChats();
+        } catch (error) {
+          console.error('Failed to create AI response:', error);
+          toast({
+            title: "Error",
+            description: "Failed to generate AI response. Please try again.",
+            variant: "destructive",
+          });
+        } finally {
+          setIsGenerating(false);
+        }
+      }, 2000);
+    } catch (error) {
+      console.error('Failed to send message:', error);
+      toast({
+        title: "Error",
+        description: "Failed to send message. Please try again.",
+        variant: "destructive",
+      });
       setIsGenerating(false);
-    }, 2000);
+    }
   };
 
   const currentChat = chats.find(chat => chat.id === activeChat);
 
+  if (isLoading) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-background">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading your chats...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-screen flex bg-background">
+      {/* Mobile Overlay */}
+      {isMobile && !sidebarCollapsed && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40"
+          onClick={() => setSidebarCollapsed(true)}
+        />
+      )}
+
       {/* Sidebar */}
-      <div className="w-80 bg-card border-r flex flex-col">
+      <div className={`
+        ${isMobile ? 'fixed' : 'relative'} 
+        ${sidebarCollapsed ? (isMobile ? '-translate-x-full' : 'w-16') : 'w-80'} 
+        ${isMobile ? 'z-50' : ''}
+        bg-card border-r flex flex-col transition-all duration-300 ease-in-out
+      `}>
         {/* Header */}
         <div className="p-4 border-b">
           <div className="flex items-center gap-2 mb-4">
             <div className="p-2 bg-gradient-primary rounded-lg">
               <Sparkles className="h-5 w-5 text-white" />
             </div>
-            <h1 className="text-xl font-bold">Blogify</h1>
+            {!sidebarCollapsed && <h1 className="text-xl font-bold">Blogify</h1>}
           </div>
-          <Button onClick={createNewChat} className="w-full" variant="hero">
+          <Button 
+            onClick={createNewChat} 
+            className={`w-full ${sidebarCollapsed ? 'px-2' : ''}`} 
+            variant="hero"
+            size={sidebarCollapsed ? "icon" : "default"}
+          >
             <Plus className="h-4 w-4" />
-            New Chat
+            {!sidebarCollapsed && "New Chat"}
           </Button>
         </div>
 
@@ -162,26 +234,33 @@ const Dashboard = () => {
                 className={`group flex items-center gap-2 p-3 rounded-lg cursor-pointer transition-colors hover:bg-accent ${
                   activeChat === chat.id ? 'bg-accent' : ''
                 }`}
-                onClick={() => setActiveChat(chat.id)}
+                onClick={() => {
+                  setActiveChat(chat.id);
+                  if (isMobile) setSidebarCollapsed(true);
+                }}
               >
-                <MessageCircle className="h-4 w-4 text-muted-foreground" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{chat.title}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {chat.messages.length} messages
-                  </p>
-                </div>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="opacity-0 group-hover:opacity-100 h-6 w-6"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    deleteChat(chat.id);
-                  }}
-                >
-                  <Trash2 className="h-3 w-3" />
-                </Button>
+                <MessageCircle className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                {!sidebarCollapsed && (
+                  <>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{chat.title}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {chat.messages.length} messages
+                      </p>
+                    </div>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="opacity-0 group-hover:opacity-100 h-6 w-6"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteChat(chat.id);
+                      }}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </>
+                )}
               </div>
             ))}
           </div>
@@ -193,34 +272,50 @@ const Dashboard = () => {
             <div className="p-2 bg-secondary rounded-full">
               <User className="h-4 w-4" />
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{user?.name}</p>
-              <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
-            </div>
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={logout}
-              className="h-8 w-8"
-            >
-              <LogOut className="h-4 w-4" />
-            </Button>
+            {!sidebarCollapsed && (
+              <>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{user?.name}</p>
+                  <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
+                </div>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={logout}
+                  className="h-8 w-8"
+                >
+                  <LogOut className="h-4 w-4" />
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </div>
 
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col">
-        {currentChat ? (
-          <>
-            {/* Chat Header */}
-            <div className="p-4 border-b">
+        {/* Top Bar with Sidebar Toggle */}
+        <div className="p-4 border-b flex items-center gap-4">
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            className="md:hidden"
+          >
+            <Menu className="h-5 w-5" />
+          </Button>
+          {currentChat && (
+            <>
               <h2 className="text-lg font-semibold">{currentChat.title}</h2>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-muted-foreground hidden sm:block">
                 AI-powered blog content generation
               </p>
-            </div>
+            </>
+          )}
+        </div>
 
+        {currentChat ? (
+          <>
             {/* Messages */}
             <ScrollArea className="flex-1 p-4">
               <div className="space-y-6 max-w-4xl mx-auto">
@@ -238,19 +333,19 @@ const Dashboard = () => {
                   currentChat.messages.map((message) => (
                     <div
                       key={message.id}
-                      className={`flex gap-4 ${message.isUser ? 'justify-end' : 'justify-start'}`}
+                      className={`flex gap-4 ${message.is_user ? 'justify-end' : 'justify-start'}`}
                     >
-                      <div className={`flex gap-3 max-w-[80%] ${message.isUser ? 'flex-row-reverse' : 'flex-row'}`}>
-                        <div className={`p-2 rounded-full ${message.isUser ? 'bg-primary' : 'bg-gradient-primary'}`}>
-                          {message.isUser ? 
+                      <div className={`flex gap-3 max-w-[80%] ${message.is_user ? 'flex-row-reverse' : 'flex-row'}`}>
+                        <div className={`p-2 rounded-full ${message.is_user ? 'bg-primary' : 'bg-gradient-primary'}`}>
+                          {message.is_user ? 
                             <User className="h-4 w-4 text-primary-foreground" /> : 
                             <Bot className="h-4 w-4 text-white" />
                           }
                         </div>
-                        <Card className={`${message.isUser ? 'bg-primary text-primary-foreground' : 'bg-card'}`}>
+                        <Card className={`${message.is_user ? 'bg-primary text-primary-foreground' : 'bg-card'}`}>
                           <CardContent className="p-4">
                             <p className="whitespace-pre-wrap">{message.content}</p>
-                            <p className={`text-xs mt-2 ${message.isUser ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
+                            <p className={`text-xs mt-2 ${message.is_user ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
                               {new Date(message.timestamp).toLocaleTimeString()}
                             </p>
                           </CardContent>

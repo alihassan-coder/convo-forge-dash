@@ -4,7 +4,7 @@ interface User {
   id: string;
   email: string;
   name: string;
-  createdAt: string;
+  created_at: string;
 }
 
 interface AuthContextType {
@@ -17,39 +17,76 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const API_BASE_URL = 'http://127.0.0.1:8000';
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     // Check if user is logged in on app start
-    const savedUser = localStorage.getItem('blogify_user');
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
+    const token = localStorage.getItem('blogify_token');
+    if (token) {
+      // Verify token with backend
+      verifyToken(token);
+    } else {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   }, []);
+
+  const verifyToken = async (token: string) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/me`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const userData = await response.json();
+        setUser(userData);
+        localStorage.setItem('blogify_token', token);
+      } else {
+        // Token is invalid, remove it
+        localStorage.removeItem('blogify_token');
+      }
+    } catch (error) {
+      console.error('Token verification error:', error);
+      localStorage.removeItem('blogify_token');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
-      // Simulate API call - replace with your MongoDB Atlas connection
-      const users = JSON.parse(localStorage.getItem('blogify_users') || '[]');
-      const foundUser = users.find((u: any) => u.email === email && u.password === password);
-      
-      if (foundUser) {
-        const userData = {
-          id: foundUser.id,
-          email: foundUser.email,
-          name: foundUser.name,
-          createdAt: foundUser.createdAt
-        };
+      const response = await fetch(`${API_BASE_URL}/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
+
+      if (response.ok) {
+        const { access_token } = await response.json();
+        localStorage.setItem('blogify_token', access_token);
         
-        setUser(userData);
-        localStorage.setItem('blogify_user', JSON.stringify(userData));
-        
-        // Console log as requested
-        console.log('Login successful:', userData);
-        return true;
+        // Get user data
+        const userResponse = await fetch(`${API_BASE_URL}/auth/me`, {
+          headers: {
+            'Authorization': `Bearer ${access_token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (userResponse.ok) {
+          const userData = await userResponse.json();
+          setUser(userData);
+          console.log('Login successful:', userData);
+          return true;
+        }
       }
       return false;
     } catch (error) {
@@ -60,38 +97,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const register = async (email: string, password: string, name: string): Promise<boolean> => {
     try {
-      // Simulate API call - replace with your MongoDB Atlas connection
-      const users = JSON.parse(localStorage.getItem('blogify_users') || '[]');
-      
-      // Check if user already exists
-      if (users.find((u: any) => u.email === email)) {
-        return false;
+      const response = await fetch(`${API_BASE_URL}/auth/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password, name }),
+      });
+
+      if (response.ok) {
+        const userData = await response.json();
+        
+        // Auto-login after registration
+        const loginResponse = await fetch(`${API_BASE_URL}/auth/login`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ email, password }),
+        });
+
+        if (loginResponse.ok) {
+          const { access_token } = await loginResponse.json();
+          localStorage.setItem('blogify_token', access_token);
+          setUser(userData);
+          console.log('Registration successful:', userData);
+          return true;
+        }
       }
-
-      const newUser = {
-        id: Date.now().toString(),
-        email,
-        password,
-        name,
-        createdAt: new Date().toISOString()
-      };
-
-      users.push(newUser);
-      localStorage.setItem('blogify_users', JSON.stringify(users));
-
-      const userData = {
-        id: newUser.id,
-        email: newUser.email,
-        name: newUser.name,
-        createdAt: newUser.createdAt
-      };
-
-      setUser(userData);
-      localStorage.setItem('blogify_user', JSON.stringify(userData));
-      
-      // Console log as requested
-      console.log('Registration successful:', userData);
-      return true;
+      return false;
     } catch (error) {
       console.error('Registration error:', error);
       return false;
@@ -100,7 +134,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = () => {
     setUser(null);
-    localStorage.removeItem('blogify_user');
+    localStorage.removeItem('blogify_token');
     console.log('User logged out');
   };
 
