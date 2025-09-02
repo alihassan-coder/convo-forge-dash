@@ -19,7 +19,7 @@ export interface Message {
 
 export interface CreateChatRequest {
   title: string;
-  user_id: string;
+  // user_id: string;
 }
 
 export interface CreateMessageRequest {
@@ -39,6 +39,7 @@ class ChatService {
 
   async getChats(): Promise<Chat[]> {
     const response = await fetch(`${API_BASE_URL}/chat/`, {
+      method: 'GET',
       headers: this.getAuthHeaders(),
     });
 
@@ -49,21 +50,11 @@ class ChatService {
     return response.json();
   }
 
-  async getChat(chatId: string): Promise<Chat> {
-    const response = await fetch(`${API_BASE_URL}/chat/${chatId}`, {
-      headers: this.getAuthHeaders(),
-    });
 
-    if (!response.ok) {
-      throw new Error('Failed to fetch chat');
-    }
-
-    return response.json();
-  }
 
   async createChat(chatData: CreateChatRequest): Promise<Chat> {
     const response = await fetch(`${API_BASE_URL}/chat/`, {
-      method: 'POST',
+  method: 'POST',
       headers: this.getAuthHeaders(),
       body: JSON.stringify(chatData),
     });
@@ -121,6 +112,20 @@ class ChatService {
 
     if (!response.ok) {
       throw new Error('Failed to create message');
+    }
+
+    return response.json();
+  }
+
+  async callAgent(messages: { role: string; content: string }[]): Promise<{ reply: string }> {
+    const response = await fetch(`${API_BASE_URL}/agent/respond`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({ messages }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to call agent');
     }
 
     return response.json();

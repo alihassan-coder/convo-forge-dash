@@ -31,6 +31,11 @@ const Dashboard = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // Agent widget state
+  const [agentOpen, setAgentOpen] = useState(false);
+  const [agentInput, setAgentInput] = useState('');
+  const [agentReply, setAgentReply] = useState<string | null>(null);
+  const [agentLoading, setAgentLoading] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   useEffect(() => {
@@ -72,28 +77,29 @@ const Dashboard = () => {
   };
 
   const createNewChat = async () => {
-    try {
-      const newChat = await chatService.createChat({
-        title: 'New Chat',
-        user_id: user!.id
-      });
-      
-      setChats(prev => [newChat, ...prev]);
-      setActiveChat(newChat.id);
-      
-      toast({
-        title: "New chat created",
-        description: "Ready to generate amazing content!",
-      });
-    } catch (error) {
-      console.error('Failed to create chat:', error);
-      toast({
-        title: "Error",
-        description: "Failed to create new chat. Please try again.",
-        variant: "destructive",
-      });
-    }
-  };
+  try {
+    const newChat = await chatService.createChat({
+      title: 'New Chat'
+      // ❌ no user_id here
+    });
+    
+    setChats(prev => [newChat, ...prev]);
+    setActiveChat(newChat.id);
+    
+    toast({
+      title: "New chat created",
+      description: "Ready to generate amazing content!",
+    });
+  } catch (error) {
+    console.error('Failed to create chat:', error);
+    toast({
+      title: "Error",
+      description: "Failed to create new chat. Please try again.",
+      variant: "destructive",
+    });
+  }
+};
+
 
   const deleteChat = async (chatId: string) => {
     try {
@@ -173,6 +179,22 @@ const Dashboard = () => {
         variant: "destructive",
       });
       setIsGenerating(false);
+    }
+  };
+
+  const askAgent = async () => {
+    if (!agentInput.trim()) return;
+    setAgentLoading(true);
+    setAgentReply(null);
+    try {
+      const resp = await chatService.callAgent([
+        { role: 'user', content: agentInput }
+      ]);
+      setAgentReply(resp.reply);
+    } catch (err) {
+      setAgentReply('Agent error: could not fetch reply.');
+    } finally {
+      setAgentLoading(false);
     }
   };
 
@@ -411,6 +433,50 @@ const Dashboard = () => {
                 <Plus className="h-4 w-4" />
                 Create New Chat
               </Button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Floating Agent Widget */}
+      <div className="fixed right-6 bottom-6 z-50">
+        {!agentOpen ? (
+          <button
+            onClick={() => setAgentOpen(true)}
+            className="bg-primary text-white rounded-full p-3 shadow-lg"
+            aria-label="Open assistant"
+          >
+            <Bot className="h-5 w-5" />
+          </button>
+        ) : (
+          <div className="w-80 h-96 bg-card border rounded-lg shadow-lg flex flex-col overflow-hidden">
+            <div className="p-2 border-b flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-1 bg-gradient-primary rounded-full"><Bot className="h-4 w-4 text-white"/></div>
+                <div className="text-sm font-medium">Assistant</div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button className="text-sm text-muted-foreground" onClick={() => setAgentOpen(false)}>Minimize</button>
+                <button className="text-sm text-muted-foreground" onClick={() => { setAgentOpen(false); setAgentReply(null); setAgentInput(''); }}>Close</button>
+              </div>
+            </div>
+            <div className="flex-1 p-3 overflow-auto">
+              {agentReply ? (
+                <div className="space-y-2">
+                  <div className="text-sm text-muted-foreground">You:</div>
+                  <div className="p-2 bg-accent rounded">{agentInput}</div>
+                  <div className="text-sm text-muted-foreground">Assistant:</div>
+                  <div className="p-2 bg-card rounded border">{agentReply}</div>
+                </div>
+              ) : (
+                <div className="text-sm text-muted-foreground">Ask me for blog ideas, outlines, or quick tips.</div>
+              )}
+            </div>
+            <div className="p-2 border-t">
+              <div className="flex gap-2">
+                <Input value={agentInput} onChange={(e) => setAgentInput(e.target.value)} placeholder="Ask the assistant..." onKeyPress={(e) => e.key === 'Enter' && askAgent()} />
+                <Button onClick={askAgent} disabled={agentLoading} variant="hero">{agentLoading ? '...' : <Send className="h-4 w-4"/>}</Button>
+              </div>
             </div>
           </div>
         )}
