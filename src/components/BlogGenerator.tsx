@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { useToast } from '@/hooks/use-toast';
 import { Sparkles, Copy, Download } from 'lucide-react';
+import { chatService } from '@/services/chatService';
 
 const BlogGenerator = () => {
   const [title, setTitle] = useState('');
@@ -19,6 +20,7 @@ const BlogGenerator = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const { toast } = useToast();
 
+  const [events, setEvents] = useState<any[]>([]);
   const generatePost = async () => {
     if (!title.trim() || !content.trim()) {
       toast({
@@ -30,53 +32,26 @@ const BlogGenerator = () => {
     }
 
     setIsGenerating(true);
+    setGeneratedPost('');
+    setEvents([]);
 
-    // Simulate AI generation
-    setTimeout(() => {
-      const lengthText = length[0] < 500 ? 'Short' : length[0] < 1200 ? 'Medium' : 'Long';
-      const generatedContent = `# ${title}
-
-## Introduction
-
-${content} This comprehensive guide will explore the key aspects of this topic in detail, providing you with actionable insights and practical strategies.
-
-## Key Points to Consider
-
-1. **Understanding the Fundamentals**: It's crucial to grasp the basic concepts before diving deeper into advanced strategies.
-
-2. **Best Practices**: Following industry-standard approaches ensures better results and sustainable growth.
-
-3. **Implementation Strategies**: 
-   - Start with small, manageable steps
-   - Monitor progress regularly
-   - Adjust tactics based on results
-
-## Deep Dive Analysis
-
-The ${tone} approach to this topic reveals several important considerations. When implementing these strategies, it's essential to maintain a balance between innovation and proven methodologies.
-
-### Practical Applications
-
-- **Immediate Actions**: Begin with these foundational steps
-- **Medium-term Goals**: Develop comprehensive strategies
-- **Long-term Vision**: Create sustainable systems
-
-## Conclusion
-
-By following these guidelines and maintaining a ${tone} approach, you'll be well-positioned to achieve your objectives. Remember to stay consistent and measure your progress regularly.
-
----
-
-*This ${lengthText.toLowerCase()} blog post was generated to provide comprehensive coverage of "${title}" in ${language} with a ${tone} tone, containing approximately ${length[0]} words.*`;
-
-      setGeneratedPost(generatedContent);
+    const query = `${title}. ${content}`.trim();
+    try {
+      await chatService.streamAgent(
+        { query },
+        (evt) => {
+          setEvents((prev) => [...prev, evt]);
+          if (evt.type === 'delta' && evt.content) {
+            setGeneratedPost((prev) => prev + evt.content);
+          }
+        }
+      );
+      toast({ title: 'Generation complete' });
+    } catch (e: any) {
+      toast({ title: 'Generation failed', description: e?.message || String(e), variant: 'destructive' });
+    } finally {
       setIsGenerating(false);
-      
-      toast({
-        title: "Blog post generated!",
-        description: `Your ${lengthText.toLowerCase()} blog post is ready.`,
-      });
-    }, 3000);
+    }
   };
 
   const copyToClipboard = () => {
@@ -233,18 +208,25 @@ By following these guidelines and maintaining a ${tone} approach, you'll be well
             </div>
           </CardHeader>
           <CardContent>
-            {generatedPost ? (
+            <div className="grid gap-4">
               <div className="prose prose-sm max-w-none">
-                <pre className="whitespace-pre-wrap text-sm bg-muted p-4 rounded-lg">
-                  {generatedPost}
+                <pre className="whitespace-pre-wrap text-sm bg-muted p-4 rounded-lg min-h-[240px]">
+                  {generatedPost || 'Your generated blog post will appear here'}
                 </pre>
               </div>
-            ) : (
-              <div className="text-center py-12 text-muted-foreground">
-                <Sparkles className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p>Your generated blog post will appear here</p>
-              </div>
-            )}
+              {events.length > 0 && (
+                <div className="text-xs bg-muted p-3 rounded">
+                  <div className="font-medium mb-2">Live events</div>
+                  <div className="space-y-1 max-h-48 overflow-auto">
+                    {events.map((e, i) => (
+                      <div key={i} className="font-mono">
+                        {JSON.stringify(e)}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
       </div>

@@ -27,15 +27,12 @@ const Dashboard = () => {
   const { toast } = useToast();
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeChat, setActiveChat] = useState<string | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  // Agent widget state
-  const [agentOpen, setAgentOpen] = useState(false);
-  const [agentInput, setAgentInput] = useState('');
-  const [agentReply, setAgentReply] = useState<string | null>(null);
-  const [agentLoading, setAgentLoading] = useState(false);
+  const [chatMinimized, setChatMinimized] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   useEffect(() => {
@@ -56,6 +53,14 @@ const Dashboard = () => {
     }
   }, [user?.id]);
 
+  useEffect(() => {
+    if (activeChat) {
+      loadMessages(activeChat);
+    } else {
+      setMessages([]);
+    }
+  }, [activeChat]);
+
   const loadChats = async () => {
     try {
       setIsLoading(true);
@@ -73,6 +78,20 @@ const Dashboard = () => {
       });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const loadMessages = async (chatId: string) => {
+    try {
+      const msgs = await chatService.getMessages(chatId);
+      setMessages(msgs);
+    } catch (error) {
+      console.error('Failed to load messages:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load messages. Please try again.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -108,7 +127,9 @@ const Dashboard = () => {
       
       if (activeChat === chatId) {
         const remainingChats = chats.filter(chat => chat.id !== chatId);
-        setActiveChat(remainingChats.length > 0 ? remainingChats[0].id : null);
+        const nextId = remainingChats.length > 0 ? remainingChats[0].id : null;
+        setActiveChat(nextId);
+        setMessages([]);
       }
       
       toast({
@@ -140,37 +161,30 @@ const Dashboard = () => {
         chat_id: activeChat
       });
 
+      // Show user message immediately
+      setMessages(prev => [...prev, userMessage]);
+
       // Update chat title if it's the first message
       const currentChat = chats.find(chat => chat.id === activeChat);
-      if (currentChat && currentChat.messages.length === 0) {
+      if (currentChat && messages.length === 0) {
         const newTitle = userMessageContent.slice(0, 50) + (userMessageContent.length > 50 ? '...' : '');
         await chatService.updateChat(activeChat, newTitle);
       }
 
-      // Simulate AI response
-      setTimeout(async () => {
-        try {
-          const aiResponse = `I'd be happy to help you create amazing blog content! Based on your message "${userMessageContent}", here are some suggestions:\n\n• Consider focusing on your target audience's pain points\n• Use engaging headlines that spark curiosity\n• Include actionable insights and examples\n• Optimize for SEO with relevant keywords\n\nWould you like me to help you generate a specific blog post on this topic?`;
-
-          await chatService.createMessage({
-            content: aiResponse,
-            is_user: false,
-            chat_id: activeChat
-          });
-
-          // Reload chats to get updated data
-          await loadChats();
-        } catch (error) {
-          console.error('Failed to create AI response:', error);
-          toast({
-            title: "Error",
-            description: "Failed to generate AI response. Please try again.",
-            variant: "destructive",
-          });
-        } finally {
-          setIsGenerating(false);
-        }
-      }, 2000);
+      try {
+        const history = [...messages, userMessage];
+        const aiSaved = await chatService.sendAndStoreAgentReply(activeChat, history, userMessageContent);
+        setMessages(prev => [...prev, aiSaved]);
+      } catch (error) {
+        console.error('Failed to get agent reply:', error);
+        toast({
+          title: "Error",
+          description: "Failed to get agent reply. Please try again.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsGenerating(false);
+      }
     } catch (error) {
       console.error('Failed to send message:', error);
       toast({
@@ -179,22 +193,6 @@ const Dashboard = () => {
         variant: "destructive",
       });
       setIsGenerating(false);
-    }
-  };
-
-  const askAgent = async () => {
-    if (!agentInput.trim()) return;
-    setAgentLoading(true);
-    setAgentReply(null);
-    try {
-      const resp = await chatService.callAgent([
-        { role: 'user', content: agentInput }
-      ]);
-      setAgentReply(resp.reply);
-    } catch (err) {
-      setAgentReply('Agent error: could not fetch reply.');
-    } finally {
-      setAgentLoading(false);
     }
   };
 
@@ -266,9 +264,9 @@ const Dashboard = () => {
                   <>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{chat.title}</p>
-                      <p className="text-xs text-muted-foreground">
+                      {/* <p className="text-xs text-muted-foreground">
                         {chat.messages.length} messages
-                      </p>
+                      </p> */}
                     </div>
                     <Button
                       size="icon"
@@ -332,6 +330,11 @@ const Dashboard = () => {
               <p className="text-sm text-muted-foreground hidden sm:block">
                 AI-powered blog content generation
               </p>
+              <div className="ml-auto">
+                <Button size="sm" variant="outline" onClick={() => setChatMinimized(!chatMinimized)}>
+                  {chatMinimized ? 'Expand' : 'Minimize'}
+                </Button>
+              </div>
             </>
           )}
         </div>
@@ -339,9 +342,10 @@ const Dashboard = () => {
         {currentChat ? (
           <>
             {/* Messages */}
+            {!chatMinimized && (
             <ScrollArea className="flex-1 p-4">
               <div className="space-y-6 max-w-4xl mx-auto">
-                {currentChat.messages.length === 0 ? (
+                {messages.length === 0 ? (
                   <div className="text-center py-12">
                     <div className="p-4 bg-gradient-primary rounded-full w-16 h-16 mx-auto mb-4">
                       <Bot className="h-8 w-8 text-white" />
@@ -352,7 +356,7 @@ const Dashboard = () => {
                     </p>
                   </div>
                 ) : (
-                  currentChat.messages.map((message) => (
+                  messages.map((message) => (
                     <div
                       key={message.id}
                       className={`flex gap-4 ${message.is_user ? 'justify-end' : 'justify-start'}`}
@@ -398,9 +402,10 @@ const Dashboard = () => {
                 )}
               </div>
             </ScrollArea>
+            )}
 
             {/* Message Input */}
-            <div className="p-4 border-t">
+            <div className={`p-4 border-t ${chatMinimized ? 'hidden' : ''}`}>
               <div className="flex gap-2 max-w-4xl mx-auto">
                 <Input
                   placeholder="Ask me about blog writing, content ideas, SEO tips..."
@@ -433,50 +438,6 @@ const Dashboard = () => {
                 <Plus className="h-4 w-4" />
                 Create New Chat
               </Button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Floating Agent Widget */}
-      <div className="fixed right-6 bottom-6 z-50">
-        {!agentOpen ? (
-          <button
-            onClick={() => setAgentOpen(true)}
-            className="bg-primary text-white rounded-full p-3 shadow-lg"
-            aria-label="Open assistant"
-          >
-            <Bot className="h-5 w-5" />
-          </button>
-        ) : (
-          <div className="w-80 h-96 bg-card border rounded-lg shadow-lg flex flex-col overflow-hidden">
-            <div className="p-2 border-b flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="p-1 bg-gradient-primary rounded-full"><Bot className="h-4 w-4 text-white"/></div>
-                <div className="text-sm font-medium">Assistant</div>
-              </div>
-              <div className="flex items-center gap-2">
-                <button className="text-sm text-muted-foreground" onClick={() => setAgentOpen(false)}>Minimize</button>
-                <button className="text-sm text-muted-foreground" onClick={() => { setAgentOpen(false); setAgentReply(null); setAgentInput(''); }}>Close</button>
-              </div>
-            </div>
-            <div className="flex-1 p-3 overflow-auto">
-              {agentReply ? (
-                <div className="space-y-2">
-                  <div className="text-sm text-muted-foreground">You:</div>
-                  <div className="p-2 bg-accent rounded">{agentInput}</div>
-                  <div className="text-sm text-muted-foreground">Assistant:</div>
-                  <div className="p-2 bg-card rounded border">{agentReply}</div>
-                </div>
-              ) : (
-                <div className="text-sm text-muted-foreground">Ask me for blog ideas, outlines, or quick tips.</div>
-              )}
-            </div>
-            <div className="p-2 border-t">
-              <div className="flex gap-2">
-                <Input value={agentInput} onChange={(e) => setAgentInput(e.target.value)} placeholder="Ask the assistant..." onKeyPress={(e) => e.key === 'Enter' && askAgent()} />
-                <Button onClick={askAgent} disabled={agentLoading} variant="hero">{agentLoading ? '...' : <Send className="h-4 w-4"/>}</Button>
-              </div>
             </div>
           </div>
         )}

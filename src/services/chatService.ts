@@ -130,6 +130,58 @@ class ChatService {
 
     return response.json();
   }
+
+  async sendAndStoreAgentReply(chatId: string, history: Message[], userMessage: string): Promise<Message> {
+    const convo = history.map((m) => ({ role: m.is_user ? 'user' : 'assistant', content: m.content }));
+    convo.push({ role: 'user', content: userMessage });
+    const { reply } = await this.callAgent(convo);
+    const saved = await this.createMessage({ content: reply, is_user: false, chat_id: chatId });
+    return saved;
+  }
+
+  async streamAgent(
+    params: { query?: string; messages?: { role: string; content: string }[]; thread_id?: string },
+    onEvent: (evt: { type: string; [key: string]: any }) => void
+  ): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/agent/stream`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify(params),
+    });
+
+    if (!response.ok || !response.body) {
+      throw new Error('Failed to open stream');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      let sepIndex: number;
+      while ((sepIndex = buffer.indexOf('\n\n')) !== -1) {
+        const rawEvent = buffer.slice(0, sepIndex);
+        buffer = buffer.slice(sepIndex + 2);
+        const lines = rawEvent.split('\n').filter(Boolean);
+        for (const line of lines) {
+          if (line.startsWith('data:')) {
+            const jsonStr = line.slice(5).trim();
+            if (!jsonStr) continue;
+            try {
+              const evt = JSON.parse(jsonStr);
+              onEvent(evt);
+            } catch {
+              // ignore malformed chunk
+            }
+          }
+        }
+      }
+    }
+  }
 }
 
 export const chatService = new ChatService();
