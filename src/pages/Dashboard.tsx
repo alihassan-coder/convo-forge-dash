@@ -547,7 +547,7 @@ const Dashboard = () => {
   }
 
   return (
-    <div className="h-screen flex bg-gray-50">
+    <div className="h-screen flex bg-gray-50 overflow-hidden">
       {/* Mobile Overlay */}
       {isMobile && !sidebarCollapsed && (
         <div 
@@ -666,7 +666,7 @@ const Dashboard = () => {
       </div>
 
       {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col bg-white">
+      <div className="flex-1 flex flex-col bg-white overflow-hidden">
         {/* Top Bar */}
         <div className="p-4 border-b border-gray-200 bg-white">
           <div className="flex items-center gap-4">
@@ -701,76 +701,78 @@ const Dashboard = () => {
           <>
             {/* Messages and Search Results */}
             {!chatMinimized && (
-              <div className="flex-1 flex">
+              <div className="flex-1 flex overflow-hidden">
                 {/* Main Chat Area */}
-                <ScrollArea className="flex-1 p-6 bg-gray-50">
-                  <div className="space-y-8 max-w-5xl mx-auto">
-                    {messages.length === 0 ? (
-                      <div className="text-center py-16">
-                        <div className="p-6 bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl w-20 h-20 mx-auto mb-6">
-                          <Bot className="h-8 w-8 text-white mx-auto mt-2" />
+                <div className="flex-1 flex flex-col">
+                  <ScrollArea className="flex-1 p-6 bg-gray-50">
+                    <div className="space-y-8 max-w-5xl mx-auto">
+                      {messages.length === 0 ? (
+                        <div className="text-center py-16">
+                          <div className="p-6 bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl w-20 h-20 mx-auto mb-6">
+                            <Bot className="h-8 w-8 text-white mx-auto mt-2" />
+                          </div>
+                          <h3 className="text-2xl font-bold text-gray-900 mb-3">Ready to create amazing content?</h3>
+                          <p className="text-gray-600 text-lg">
+                            Ask me anything about blog writing, SEO, or content strategy!
+                          </p>
                         </div>
-                        <h3 className="text-2xl font-bold text-gray-900 mb-3">Ready to create amazing content?</h3>
-                        <p className="text-gray-600 text-lg">
-                          Ask me anything about blog writing, SEO, or content strategy!
-                        </p>
-                      </div>
-                    ) : (
-                      messages.map((message) => (
-                        <div
-                          key={message.id}
-                          className={`flex gap-4 ${message.is_user ? 'justify-end' : 'justify-start'}`}
-                        >
-                          <div className={`flex gap-4 max-w-[85%] ${message.is_user ? 'flex-row-reverse' : 'flex-row'}`}>
-                            <div className={`p-3 rounded-full shrink-0 ${message.is_user ? 'bg-blue-500' : 'bg-gradient-to-r from-blue-500 to-purple-600'}`}>
-                              {message.is_user ? 
-                                <User className="h-5 w-5 text-white" /> : 
-                                <Bot className="h-5 w-5 text-white" />
-                              }
+                      ) : (
+                        messages.map((message) => (
+                          <div
+                            key={message.id}
+                            className={`flex gap-4 ${message.is_user ? 'justify-end' : 'justify-start'}`}
+                          >
+                            <div className={`flex gap-4 max-w-[85%] ${message.is_user ? 'flex-row-reverse' : 'flex-row'}`}>
+                              <div className={`p-3 rounded-full shrink-0 ${message.is_user ? 'bg-blue-500' : 'bg-gradient-to-r from-blue-500 to-purple-600'}`}>
+                                {message.is_user ? 
+                                  <User className="h-5 w-5 text-white" /> : 
+                                  <Bot className="h-5 w-5 text-white" />
+                                }
+                              </div>
+                              <Card className={`${message.is_user ? 'bg-blue-500 text-white border-blue-500' : 'bg-white shadow-md border-gray-200'}`}>
+                                <CardContent className="p-6">
+                                  {message.is_user ? (
+                                    <p className="whitespace-pre-wrap text-white">{message.content}</p>
+                                  ) : (
+                                    renderAIMessage(message.content)
+                                  )}
+                                  <p className={`text-xs mt-4 ${message.is_user ? 'text-blue-100' : 'text-gray-400'}`}>
+                                    {new Date(message.timestamp).toLocaleTimeString()}
+                                  </p>
+                                </CardContent>
+                              </Card>
                             </div>
-                            <Card className={`${message.is_user ? 'bg-blue-500 text-white border-blue-500' : 'bg-white shadow-md border-gray-200'}`}>
+                          </div>
+                        ))
+                      )}
+                      
+                      {isGenerating && (
+                        <div className="flex gap-4 justify-start">
+                          <div className="flex gap-4 max-w-[85%]">
+                            <div className="p-3 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full">
+                              <Bot className="h-5 w-5 text-white" />
+                            </div>
+                            <Card className="bg-white shadow-md">
                               <CardContent className="p-6">
-                                {message.is_user ? (
-                                  <p className="whitespace-pre-wrap text-white">{message.content}</p>
-                                ) : (
-                                  renderAIMessage(message.content)
-                                )}
-                                <p className={`text-xs mt-4 ${message.is_user ? 'text-blue-100' : 'text-gray-400'}`}>
-                                  {new Date(message.timestamp).toLocaleTimeString()}
-                                </p>
+                                <div className="flex items-center gap-3">
+                                  <div className="animate-spin">
+                                    <Sparkles className="h-5 w-5 text-blue-500" />
+                                  </div>
+                                  <div>
+                                    <p className="text-sm font-medium text-gray-900">
+                                      {currentStep ? `${currentStep}...` : 'Generating response...'}
+                                    </p>
+                                    <p className="text-xs text-gray-500">This may take a few moments</p>
+                                  </div>
+                                </div>
                               </CardContent>
                             </Card>
                           </div>
                         </div>
-                      ))
-                    )}
-                    
-                    {isGenerating && (
-                      <div className="flex gap-4 justify-start">
-                        <div className="flex gap-4 max-w-[85%]">
-                          <div className="p-3 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full">
-                            <Bot className="h-5 w-5 text-white" />
-                          </div>
-                          <Card className="bg-white shadow-md">
-                            <CardContent className="p-6">
-                              <div className="flex items-center gap-3">
-                                <div className="animate-spin">
-                                  <Sparkles className="h-5 w-5 text-blue-500" />
-                                </div>
-                                <div>
-                                  <p className="text-sm font-medium text-gray-900">
-                                    {currentStep ? `${currentStep}...` : 'Generating response...'}
-                                  </p>
-                                  <p className="text-xs text-gray-500">This may take a few moments</p>
-                                </div>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </ScrollArea>
+                      )}
+                    </div>
+                  </ScrollArea>
+                </div>
 
                 {/* Enhanced Search Results Panel */}
                 {searchResults.length > 0 && (
