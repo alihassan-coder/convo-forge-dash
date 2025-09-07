@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { useToast } from '@/hooks/use-toast';
-import { Sparkles, Copy, Download } from 'lucide-react';
+import { Sparkles, Copy, Download, Search } from 'lucide-react';
 import { chatService } from '@/services/chatService';
 
 const BlogGenerator = () => {
@@ -21,6 +21,10 @@ const BlogGenerator = () => {
   const { toast } = useToast();
 
   const [events, setEvents] = useState<any[]>([]);
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [currentStep, setCurrentStep] = useState<string>('');
+  const [isBlogRequest, setIsBlogRequest] = useState<boolean>(false);
+
   const generatePost = async () => {
     if (!title.trim() || !content.trim()) {
       toast({
@@ -34,14 +38,24 @@ const BlogGenerator = () => {
     setIsGenerating(true);
     setGeneratedPost('');
     setEvents([]);
+    setSearchResults([]);
+    setCurrentStep('');
+    setIsBlogRequest(false);
 
-    const query = `${title}. ${content}`.trim();
+    const query = `Write a blog about ${title}. ${content}`.trim();
     try {
       await chatService.streamAgent(
         { query },
         (evt) => {
           setEvents((prev) => [...prev, evt]);
-          if (evt.type === 'delta' && evt.content) {
+          
+          if (evt.type === 'step') {
+            setCurrentStep(evt.name);
+          } else if (evt.type === 'intent') {
+            setIsBlogRequest(evt.is_blog_request);
+          } else if (evt.type === 'search_results') {
+            setSearchResults(evt.results || []);
+          } else if (evt.type === 'delta' && evt.content) {
             setGeneratedPost((prev) => prev + evt.content);
           }
         }
@@ -86,7 +100,7 @@ const BlogGenerator = () => {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
         {/* Input Form */}
         <Card className="shadow-soft">
           <CardHeader>
@@ -178,7 +192,7 @@ const BlogGenerator = () => {
               {isGenerating ? (
                 <>
                   <Sparkles className="h-4 w-4 animate-spin" />
-                  Generating Post...
+                  {currentStep ? `Generating... (${currentStep})` : 'Generating Post...'}
                 </>
               ) : (
                 <>
@@ -187,6 +201,52 @@ const BlogGenerator = () => {
                 </>
               )}
             </Button>
+          </CardContent>
+        </Card>
+
+        {/* Search Results */}
+        <Card className="shadow-soft">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Search className="h-5 w-5 text-primary" />
+              Research Sources ({searchResults.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3 max-h-96 overflow-y-auto">
+              {searchResults.length > 0 ? (
+                searchResults.map((result, index) => (
+                  <div key={index} className="p-3 border rounded-lg hover:bg-accent transition-colors">
+                    <h4 className="font-medium text-sm mb-2 line-clamp-2">{result.title}</h4>
+                    <p className="text-xs text-muted-foreground mb-2 line-clamp-3">{result.content}</p>
+                    <div className="flex items-center justify-between">
+                      <a 
+                        href={result.url} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-xs text-primary hover:underline"
+                      >
+                        View Source
+                      </a>
+                      <span className="text-xs text-muted-foreground">
+                        Score: {result.score?.toFixed(2) || 'N/A'}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  {isGenerating ? (
+                    <div className="flex items-center justify-center gap-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+                      <span>Searching for sources...</span>
+                    </div>
+                  ) : (
+                    <p>Research sources will appear here during generation</p>
+                  )}
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
 
@@ -208,24 +268,24 @@ const BlogGenerator = () => {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-4">
+            <div className="space-y-4">
+              {isBlogRequest && (
+                <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="flex items-center gap-2 text-green-800">
+                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                    <span className="text-sm font-medium">Blog Generation Mode</span>
+                  </div>
+                  <p className="text-xs text-green-600 mt-1">
+                    AI detected this as a blog request and will generate comprehensive content
+                  </p>
+                </div>
+              )}
+              
               <div className="prose prose-sm max-w-none">
                 <pre className="whitespace-pre-wrap text-sm bg-muted p-4 rounded-lg min-h-[240px]">
                   {generatedPost || 'Your generated blog post will appear here'}
                 </pre>
               </div>
-              {events.length > 0 && (
-                <div className="text-xs bg-muted p-3 rounded">
-                  <div className="font-medium mb-2">Live events</div>
-                  <div className="space-y-1 max-h-48 overflow-auto">
-                    {events.map((e, i) => (
-                      <div key={i} className="font-mono">
-                        {JSON.stringify(e)}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           </CardContent>
         </Card>
